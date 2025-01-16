@@ -1,0 +1,43 @@
+{% extends 'tasks/base.html' %}
+
+{% block content %}
+<div class="container mt-5">
+  <div class="row justify-content-center">
+    <div class="col-md-6">
+      <div class="card">
+        <div class="card-body">
+          <h1 class="card-title text-center">Update Task</h1>
+
+          <form method="post">
+            {% csrf_token %}
+
+            <div class="form-group">
+              <label for="id_task">Task Name</label>
+              <input type="text" name="task" value="{{ task.task }}" class="form-control" id="id_task">
+            </div>
+
+            <div class="form-group">
+              <label for="id_target_date">Target Date</label>
+              <input type="date" name="target_date" value="{{ task.target_date|date:'Y-m-d' }}" class="form-control" id="id_target_date">
+            </div>
+
+            <div class="form-group">
+              <label for="id_remarks">Remarks</label>
+              <textarea name="remarks" class="form-control" id="id_remarks">{{ task.remarks }}</textarea>
+            </div>
+
+            <div class="text-center">
+              <button type="submit" class="btn btn-primary btn-lg">Update Task</button>
+            </div>
+          </form>
+
+          <div class="mt-3 text-center">
+            <a href="{% url 'department_tasks' task.department.id %}" class="btn btn-secondary">Back to Department Tasks</a>
+          </div>
+
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}

@@ -1,0 +1,432 @@
+{% extends 'tasks/base.html' %}
+
+{% block content %}
+<div class="container mt-5">
+    <h1 class="mb-4">{{ department.department_name }} Tasks</h1>
+    <h3>[Score:{{ department.score }}%]</h3>
+
+    <table class="table table-striped table-hover">
+        <thead>
+            <tr>
+                <th>Task List</th>
+                <th>Target Date</th>
+                <th>Status</th>
+                <th>Remarks</th>
+                <th>Priority</th>
+                <th>Actions</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for task in tasks %}
+            <tr data-task-id="{{ task.id }}">
+                <td class="task-cell">{{ task.task }}</td>
+                <td class="target-date-cell">{{ task.target_date|date:"Y-m-d" }}</td>
+                <td class="status-cell">{{ task.get_status_display }}</td>
+                <td class="remarks-cell">{{ task.remarks }}</td>
+                <td class="priority-cell">{{ task.get_priority_display }}</td>
+                <td>
+                    <a href="#" class="edit-task" data-task-id="{{ task.id }}"><i class="bi bi-pencil-square"></i></a>
+                    <a href="{% url 'delete_task' task.id %}" class="delete-task"><i class="bi bi-trash"></i></a>
+                </td>
+            </tr>
+            {% endfor %}
+
+            <!-- Add Task Form Row (Initially Hidden) -->
+            <tr id="addTaskForm" style="display: none;">
+                <td colspan="6">
+                    <form method="post" action="{% url 'department_tasks' department.id %}">
+                        {% csrf_token %}
+                        <input type="hidden" name="department" value="{{ department.id }}">
+                        <table class="table">
+                            <tr>
+                                <td>{{ form.task }}</td>
+                                <td>{{ form.target_date }}</td>
+                                <td>{{ form.status }}</td>
+                                <td style="width: 200px;">
+                                    <div style="height: 38px; overflow: hidden;">
+                                        {{ form.remarks }}
+                                    </div>
+                                </td>
+                                <td>{{ form.priority }}</td>
+                                <td>
+                                    <button type="submit" name="add_task" class="btn btn-success btn-sm">Add Task</button>
+                                    <button type="button" id="cancelAddTaskBtn" class="btn btn-secondary btn-sm">Cancel</button>
+                                </td>
+                            </tr>
+                        </table>
+                    </form>
+                </td>
+            </tr>
+        </tbody>
+    </table>
+
+    <button id="showAddTaskBtn" class="btn btn-success">Add Task</button>
+    <a href="{% url 'dashboard' %}" class="btn btn-secondary">Back to Dashboard</a>
+</div>
+
+<script>
+    document.addEventListener('DOMContentLoaded', function() {
+        const showAddTaskBtn = document.getElementById('showAddTaskBtn');
+        const cancelAddTaskBtn = document.getElementById('cancelAddTaskBtn');
+        const addTaskForm = document.getElementById('addTaskForm');
+
+        if (showAddTaskBtn) {
+            showAddTaskBtn.addEventListener('click', function() {
+                addTaskForm.style.display = 'table-row'; // Display as table row
+                showAddTaskBtn.style.display = 'none';
+            });
+        }
+
+        if (cancelAddTaskBtn) {
+            cancelAddTaskBtn.addEventListener('click', function() {
+                addTaskForm.style.display = 'none';
+                showAddTaskBtn.style.display = 'block';
+            });
+        }
+
+        // Edit Task Logic
+        const table = document.querySelector('.table');
+        table.addEventListener('click', function(event) {
+            if (event.target.closest('.edit-task')) {
+                const editButton = event.target.closest('.edit-task');
+                const row = editButton.closest('tr');
+                const taskId = row.dataset.taskId;
+
+                if (row.classList.contains('edit-mode')) {
+                    // Save Changes
+                    const task = row.querySelector('.task-input').value;
+                    const targetDate = row.querySelector('.target-date-input').value;
+                    const status = row.querySelector('.status-select').value;
+                    const remarks = row.querySelector('.remarks-input').value;
+                    const priority = row.querySelector('.priority-select').value;
+
+                    const formData = new FormData();
+                    formData.append('task_id', taskId);
+                    formData.append('task', task);
+                    formData.append('target_date', targetDate);
+                    formData.append('status', status);
+                    formData.append('remarks', remarks);
+                    formData.append('priority', priority);
+                    formData.append('update_task', 'update_task');
+                    formData.append('csrfmiddlewaretoken', '{{ csrf_token }}');
+
+                    fetch("{% url 'department_tasks' department.id %}", {
+                        method: 'POST',
+                        body: formData
+                    })
+                    .then(response => {
+                        if (response.ok) {
+                            // Update row content
+                            row.querySelector('.task-cell').textContent = task;
+                            row.querySelector('.target-date-cell').textContent = targetDate;
+                            row.querySelector('.status-cell').textContent = row.querySelector('.status-select option:checked').text;
+                            row.querySelector('.remarks-cell').textContent = remarks;
+                            row.querySelector('.priority-cell').textContent = row.querySelector('.priority-select option:checked').text;
+
+                            // Exit edit mode
+                            row.classList.remove('edit-mode');
+                            toggleEditMode(row, taskId, false);
+                        } else {
+                            console.error('Error updating task');
+                        }
+                    })
+                    .catch(error => console.error('Error:', error));
+
+                } else {
+                    // Enter Edit Mode
+                    row.classList.add('edit-mode');
+                    toggleEditMode(row, taskId, true);
+                }
+            }
+        });
+        const statusChoices = JSON.parse('{{ status_choices|safe }}');
+        const priorityChoices = JSON.parse('{{ priority_choices|safe }}');
+
+        function toggleEditMode(row, taskId, editMode) {
+            const cells = ['task', 'target-date', 'status', 'remarks', 'priority'];
+            cells.forEach(cell => {
+                const cellElement = row.querySelector(`.${cell}-cell`);
+                const cellValue = cellElement.textContent;
+
+                if (editMode) {
+                    let inputElement;
+                    if (cell === 'status') {
+                        inputElement = document.createElement('select');
+                        inputElement.className = `${cell}-select form-control`;
+                        statusChoices.forEach(choice => {
+                            const option = document.createElement('option');
+                            option.value = choice[0];
+                            option.text = choice[1];
+                            if (choice[0] === row.querySelector('.status-cell').getAttribute('data-value')) {
+                                option.selected = true;
+                            }
+                            inputElement.appendChild(option);
+                        });
+                    } else if (cell === 'priority') {
+                        inputElement = document.createElement('select');
+                        inputElement.className = `${cell}-select form-control`;
+                        priorityChoices.forEach(choice => {
+                            const option = document.createElement('option');
+                            option.value = choice[0];
+                            option.text = choice[1];
+                            if (choice[0] === row.querySelector('.priority-cell').getAttribute('data-value')) {
+                                option.selected = true;
+                            }
+                            inputElement.appendChild(option);
+                        });
+                        
+                    } else if (cell === 'target-date') {
+                        inputElement = document.createElement('input');
+                        inputElement.type = 'date';
+                        inputElement.className = `${cell}-input form-control`;
+                        inputElement.value = cellValue;
+                    } else {
+                        inputElement = document.createElement('input');
+                        inputElement.type = 'text';
+                        inputElement.className = `${cell}-input form-control`;
+                        inputElement.value = cellValue;
+                    }
+                    cellElement.setAttribute('data-value', cellElement.textContent);
+                    cellElement.innerHTML = '';
+                    cellElement.appendChild(inputElement);
+                } else {
+                    // Revert to original text content
+                    cellElement.innerHTML = '';
+                    if (cell === 'status') {
+                        cellElement.textContent = row.querySelector('.status-select option:checked').text;
+                    } else if (cell === 'priority') {
+                        cellElement.textContent = row.querySelector('.priority-select option:checked').text;
+                    } else {
+                        cellElement.textContent = row.querySelector(`.${cell}-input`).value;
+                    }
+                }
+            });
+
+            // Change the edit button icon
+            const editButton = row.querySelector('.edit-task');
+            editButton.innerHTML = editMode ? '<i class="bi bi-check-square"></i>' : '<i class="bi bi-pencil-square"></i>';
+        }
+    });
+</script>
+{% endblock %}
+
+
+
+
+
+
+
+
+
+
+
+
+{% extends 'tasks/base.html' %}
+
+{% block content %}
+<div class="container mt-5">
+    <h1 class="mb-4">{{ department.department_name }} Tasks</h1>
+    <h3>[Score:<span id="department-score">{{ department.score }}</span>%]</h3>
+
+    <table class="table table-striped table-hover">
+        <thead>
+            <tr>
+                <th>Task List</th>
+                <th>Target Date</th>
+                <th>Status</th>
+                <th>Remarks</th>
+                <th>Priority</th>
+                <th>Actions</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for task in tasks %}
+            <tr data-task-id="{{ task.id }}">
+                <td class="task-cell">{{ task.task }}</td>
+                <td class="target-date-cell">{{ task.target_date|date:"Y-m-d" }}</td>
+                <td class="status-cell" data-value="{{ task.status }}">{{ task.get_status_display }}</td>
+                <td class="remarks-cell">{{ task.remarks }}</td>
+                <td class="priority-cell" data-value="{{ task.priority }}">{{ task.get_priority_display }}</td>
+                <td>
+                    <a href="#" class="edit-task" data-task-id="{{ task.id }}"><i class="bi bi-pencil-square"></i></a>
+                    <a href="{% url 'delete_task' task.id %}" class="delete-task"><i class="bi bi-trash"></i></a>
+                </td>
+            </tr>
+            {% endfor %}
+
+            <!-- Add Task Form Row (Initially Hidden) -->
+            <tr id="addTaskForm" style="display: none;">
+                <td colspan="6">
+                    <form method="post" action="{% url 'department_tasks' department.id %}">
+                        {% csrf_token %}
+                        <input type="hidden" name="department" value="{{ department.id }}">
+                        <table class="table">
+                            <tr>
+                                <td>{{ form.task }}</td>
+                                <td>{{ form.target_date }}</td>
+                                <td>{{ form.status }}</td>
+                                <td style="width: 200px;">
+                                    <div style="height: 38px; overflow: hidden;">
+                                        {{ form.remarks }}
+                                    </div>
+                                </td>
+                                <td>{{ form.priority }}</td>
+                                <td>
+                                    <button type="submit" name="add_task" class="btn btn-success btn-sm">Add Task</button>
+                                    <button type="button" id="cancelAddTaskBtn" class="btn btn-secondary btn-sm">Cancel</button>
+                                </td>
+                            </tr>
+                        </table>
+                    </form>
+                </td>
+            </tr>
+        </tbody>
+    </table>
+
+    <button id="showAddTaskBtn" class="btn btn-success">Add Task</button>
+    <a href="{% url 'dashboard' %}" class="btn btn-secondary">Back to Dashboard</a>
+</div>
+
+<script>
+    document.addEventListener('DOMContentLoaded', function() {
+        const showAddTaskBtn = document.getElementById('showAddTaskBtn');
+        const cancelAddTaskBtn = document.getElementById('cancelAddTaskBtn');
+        const addTaskForm = document.getElementById('addTaskForm');
+
+        if (showAddTaskBtn) {
+            showAddTaskBtn.addEventListener('click', function() {
+                addTaskForm.style.display = 'table-row'; // Display as table row
+                showAddTaskBtn.style.display = 'none';
+            });
+        }
+
+        if (cancelAddTaskBtn) {
+            cancelAddTaskBtn.addEventListener('click', function() {
+                addTaskForm.style.display = 'none';
+                showAddTaskBtn.style.display = 'block';
+            });
+        }
+
+        // Edit Task Logic
+        const table = document.querySelector('.table');
+        table.addEventListener('click', function(event) {
+            if (event.target.closest('.edit-task')) {
+                const editButton = event.target.closest('.edit-task');
+                const row = editButton.closest('tr');
+                const taskId = row.dataset.taskId;
+
+                if (row.classList.contains('edit-mode')) {
+                    // Save Changes
+                    const task = row.querySelector('.task-input').value;
+                    const targetDate = row.querySelector('.target-date-input').value;
+                    const status = row.querySelector('.status-select').value;
+                    const remarks = row.querySelector('.remarks-input').value;
+                    const priority = row.querySelector('.priority-select').value;
+
+                    const formData = new FormData();
+                    formData.append('task_id', taskId);
+                    formData.append('task', task);
+                    formData.append('target_date', targetDate);
+                    formData.append('status', status);
+                    formData.append('remarks', remarks);
+                    formData.append('priority', priority);
+                    formData.append('update_task', 'update_task');
+                    formData.append('csrfmiddlewaretoken', '{{ csrf_token }}');
+
+                    fetch("{% url 'department_tasks' department.id %}", {
+                        method: 'POST',
+                        body: formData
+                    })
+                    .then(response => response.json())
+                    .then(data => {
+                        if (data.success) {
+                            // Update row content
+                            row.querySelector('.task-cell').textContent = task;
+                            row.querySelector('.target-date-cell').textContent = targetDate;
+                            row.querySelector('.status-cell').textContent = row.querySelector('.status-select option:checked').text;
+                            row.querySelector('.status-cell').setAttribute('data-value', status);
+                            row.querySelector('.remarks-cell').textContent = remarks;
+                            row.querySelector('.priority-cell').textContent = row.querySelector('.priority-select option:checked').text;
+                            row.querySelector('.priority-cell').setAttribute('data-value', priority);
+                            // Update department score
+                            document.getElementById('department-score').textContent = data.new_score;
+                            // Exit edit mode
+                            row.classList.remove('edit-mode');
+                            toggleEditMode(row, taskId, false);
+                        } else {
+                            console.error('Error updating task');
+                        }
+                    })
+                    .catch(error => console.error('Error:', error));
+
+                } else {
+                    // Enter Edit Mode
+                    row.classList.add('edit-mode');
+                    toggleEditMode(row, taskId, true);
+                }
+            }
+        });
+        const statusChoices = JSON.parse('{{ status_choices|safe }}');
+        const priorityChoices = JSON.parse('{{ priority_choices|safe }}');
+
+        function toggleEditMode(row, taskId, editMode) {
+            const cells = ['task', 'target-date', 'status', 'remarks', 'priority'];
+            cells.forEach(cell => {
+                const cellElement = row.querySelector(`.${cell}-cell`);
+                const cellValue = cellElement.textContent;
+
+                if (editMode) {
+                    let inputElement;
+                    if (cell === 'status') {
+                        inputElement = document.createElement('select');
+                        inputElement.className = `${cell}-select form-control`;
+                        statusChoices.forEach(choice => {
+                            const option = document.createElement('option');
+                            option.value = choice[0];
+                            option.text = choice[1];
+                            if (choice[0] === row.querySelector('.status-cell').getAttribute('data-value')) {
+                                option.selected = true;
+                            }
+                            inputElement.appendChild(option);
+                        });
+                    } else if (cell === 'priority') {
+                        inputElement = document.createElement('select');
+                        inputElement.className = `${cell}-select form-control`;
+                        priorityChoices.forEach(choice => {
+                            const option = document.createElement('option');
+                            option.value = choice[0];
+                            option.text = choice[1];
+                            if (choice[0] === row.querySelector('.priority-cell').getAttribute('data-value')) {
+                                option.selected = true;
+                            }
+                            inputElement.appendChild(option);
+                        });
+                        
+                    } else if (cell === 'target-date') {
+                        inputElement = document.createElement('input');
+                        inputElement.type = 'date';
+                        inputElement.className = `${cell}-input form-control`;
+                        inputElement.value = cellValue;
+                    } else {
+                        inputElement = document.createElement('input');
+                        inputElement.type = 'text';
+                        inputElement.className = `${cell}-input form-control`;
+                        inputElement.value = cellValue;
+                    }
+                    cellElement.setAttribute('data-value', cellElement.textContent);
+                    cellElement.innerHTML = '';
+                    cellElement.appendChild(inputElement);
+                } else {
+                    // Revert to original text content
+                    cellElement.innerHTML = '';
+                    cellElement.textContent = cellElement.getAttribute('data-value')
+                }
+            });
+
+            // Change the edit button icon
+            const editButton = row.querySelector('.edit-task');
+            editButton.innerHTML = editMode ? '<i class="bi bi-check-square"></i>' : '<i class="bi bi-pencil-square"></i>';
+        }
+    });
+</script>
+{% endblock %}
